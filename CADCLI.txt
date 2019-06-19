@@ -1,0 +1,1136 @@
+﻿ IDENTIFICATON DIVISION.
+ PROGRAM-ID. CADASTRO.
+*
+ ENVIRONMENT DIVISION.
+ INPUT-OUTPUT SECTION.
+ FILE CONTROL.
+*
+      SELECT ARQ-CLIENTE ASSIGN  TO DISK WID-ARQ-CLIENTE
+             ORGANIZATION        IS INDEXED
+             ACCESS MODE         IS DYNAMIC
+             RECORD KEY          IS CLI-COD
+             ALTERNATE KEY       IS CLI-CNPJ
+             LOCK MODE           IS MANUAL
+             FILE STATUS         IS WS-RESULTADO-ACESSO.
+*
+      SELECT ARQ-VENDEDOR ASSIGN TO DISK WID-ARQ-VENDEDOR
+             ORGANIZATION        IS INDEXED
+             ACCESS MODE         IS DYNAMIC
+             RECORD KEY          IS VEND-COD
+             ALTERNATE KEY       IS VEND-CPF
+             LOCK MODE           IS MANUAL
+             FILE STATUS         IS WS-RESULTADO-ACESSO.
+*
+      SELECT ARQ-CLI-IMP  ASSIGN TO DISK WID-ARQ-CLI-IMP
+             ORGANIZATION        IS SEQUENTIAL.
+*
+      SELECT ARQ-VEN-IMP  ASSIGN TO DISK WID-ARQ-VEN-IMP
+             ORGANIZATION        IS SEQUENTIAL.
+*
+ DATA DIVISION.
+ FILE SECTION.
+*
+ FD ARQ-CLIENTE
+    LABEL RECORD IS STANDARD.
+*
+ 01 REG-CLIENTE.
+    05 CLI-COD          PIC  9(07).
+    05 CLI-CNPJ         PIC  9(14).
+    05 CLI-RAZAO-SOC    PIC  X(40).
+    05 CLI-LAT          PIC S9(03)V9(08).
+    05 CLI-LONG         PIC S9(03)V9(08).
+* 
+ FD ARQ-VENDEDOR
+    LABEL RECORD IS STANDARD.
+*
+ 01 REG-VENDEDOR.
+    05 VEND-COD         PIC  9(03).
+    05 VEND-CPF         PIC  9(11).
+    05 VEND-NOME        PIC  X(40).
+    05 VEND-LAT         PIC S9(03)V9(08).
+    05 VEND-LONG        PIC S9(03)V9(08).
+*
+ FD ARQ-CLI-IMP
+    LABEL RECORD IS STANDARD.
+*
+ 01 REG-CLI-IMP.
+    05 ICLI-COD         PIC  9(07).
+    05 ICLI-CNPJ        PIC  9(14).
+    05 ICLI-RAZAO-SOC   PIC  X(40).
+    05 ICLI-LAT         PIC S9(03)V9(08).
+    05 ICLI-LONG        PIC S9(03)V9(08).
+* 
+ FD ARQ-VEN-IMP
+    LABEL RECORD IS STANDARD.
+*
+ 01 REG-VEN-IMP.
+    05 IVEND-COD        PIC  9(03).
+    05 IVEND-CPF        PIC  9(11).
+    05 IVEND-NOME       PIC  X(40).
+    05 IVEND-LAT        PIC S9(03)V9(08).
+    05 IVEND-LONG       PIC S9(03)V9(08).
+*
+ WORKING-STORAGE SECTION.
+*
+ 78 C-PRG-NAME          PIC  X(08) VALUE 'CADCLI'.
+ 78 C-OPCAO-INV         PIC  X(32) VALUE 'OPÇÃO INVÁLIDA - FAVOR CORRIGIR'. 
+ 78 C-CABEC-CLI         PIC  X(20) VALUE 'CADASTRO DE CLIENTE '.
+ 78 C-CABEC-VEND        PIC  X(20) VALUE 'CADASTRO DE VENDEDOR'. 
+ 78 C-INCLUSAO          PIC  X(10) VALUE 'INCLUSAO  '.
+ 78 C-ALTERACAO         PIC  X(10) VALUE 'ALTERACAO '.
+ 78 C-EXCLUSAO          PIC  X(10) VALUE 'EXCLUSAO  '.
+ 78 C-IMPORTACAO        PIC  X(10) VALUE 'IMPORTACAO'.  
+ 78 C-RAZAO-SOC-INV     PIC  X(32) VALUE 'RAZAO SOCIAL NÃO PODE SER BRANCO'.
+ 78 C-NOME-INV          PIC  X(35) VALUE 'NOME DO VENDEDOR NÃO PODE SER BRANCO'.
+ 78 C-LAT-LONG-INV      PIC  X(39) VALUE 'LATITUDE OU LONGITUDE NÃO PODE SER ZERO'. 
+ 78 C-CNPJ-INV          PIC  X(13) VALUE 'CNPJ INVALIDO'.
+ 78 C-CPF-INV           PIC  X(12) VALUE 'CPF INVALIDO'.
+ 78 C-COD-CLI-EXISTE    PIC  X(27) VALUE 'CODIGO DE CLIENTE JÁ EXISTE'.
+ 78 C-COD-VEN-EXISTE    PIC  X(28) VALUE 'CODIGO DO VENDEDOR JÁ EXISTE'.
+ 78 C-CNPJ-CLI-EXISTE   PIC  X(40) VALUE 'CNPJ ASSOCIADO A OUTRO CODIGO DE CLIENTE'.
+ 78 C-CPF-VEN-EXISTE    PIC  X(40) VALUE 'CPF ASSOCIADO A OUTRO CODIGO DE VENDEDOR'.
+ 78 C-SUCESSO           PIC  X(31) VALUE 'OPERAÇÃO REALIZADA COM SUCESSO'.
+ 78 C-PROB-UPD          PIC  X(23) VALUE 'PROBLEMA NA ATUALIZAÇÃO'.
+ 78 C-PROB-DEL          PIC  X(20) VALUE 'PROBLEMA NA EXCLUSAO'.
+ 78 C-CONF-INCLUSAO     PIC  X(24) VALUE 'CONFIRMA INCLUSÃO? <S/N> '.
+ 78 C-CONF-ALTERACAO    PIC  X(24) VALUE 'CONFIRMA ALTERACAO? <S/N> '.
+ 78 C-CONF-EXCLUSAO     PIC  X(24) VALUE 'CONFIRMA EXCLUSAO? <S/N> '.
+ 78 C-CLIENTE-NOTFOUND  PIC  X(22) VALUE 'CLIENTE NÃO ENCONTRADO'. 
+ 78 C-VENDEDOR-NOTFOUND PIC  X(22) VALUE 'VENDEDOR NÃO ENCONTRADO'. 
+*
+ 77 WS-TECLA            PIC  9(03) VALUE ZEROS.
+    88 ESCAPE-KEY       VALUE 27.
+* 
+ 77 WS-OPERACAO         PIC  X(01).
+    88 WS-OPERACAO-FIM  VALUE "1".
+*
+ 77 WS-RESULTADO-ACESSO PIC  X(02).
+    88 WS-RESULT-OK     VALUE "00" THRU "09".
+    88 WS-RESULT-35     VALUE 35. 
+* 
+ 01 TAB-CPF-INV.
+    05 PIC 9(11) VALUE "00000000000"
+    05 PIC 9(11) VALUE "11111111111"
+    05 PIC 9(11) VALUE "22222222222"
+    05 PIC 9(11) VALUE "33333333333"
+    05 PIC 9(11) VALUE "44444444444"
+    05 PIC 9(11) VALUE "55555555555"
+    05 PIC 9(11) VALUE "66666666666"
+    05 PIC 9(11) VALUE "77777777777"
+    05 PIC 9(11) VALUE "88888888888"
+    05 PIC 9(11) VALUE "99999999999"
+ 01 CPF-INV REDEFINES TAB-CPF-INV 
+                        PIC 9(11) OCCURS 10.
+*
+ 01 WS-CPF-INV          PIC 9(09).
+ 01 WS-CPF-BIT REDEFINES WS-CPF-INV
+                        PIC 9(01) OCCURS 09.  
+*
+ 01 WS-CPF-FULL         PIC 9(11).
+ 01 FILLER REDEFINES WS-CPF-FULL.
+    05 WS-CPF-MAIN      PIC 9(09).
+    05 WS-CPF-DIGIT     PIC 9(02).
+*
+ 01 TAB-CNPJ-INV.
+    05 PIC 9(14) VALUE "00000000000000"
+    05 PIC 9(14) VALUE "11111111111111"
+    05 PIC 9(14) VALUE "22222222222222"
+    05 PIC 9(14) VALUE "33333333333333"
+    05 PIC 9(14) VALUE "44444444444444"
+    05 PIC 9(14) VALUE "55555555555555"
+    05 PIC 9(14) VALUE "66666666666666"
+    05 PIC 9(14) VALUE "77777777777777"
+    05 PIC 9(14) VALUE "88888888888888"
+    05 PIC 9(14) VALUE "99999999999999"
+ 01 CNPJ-INV REDEFINES TAB-CNPJ-INV 
+                        PIC 9(14) OCCURS 10.
+*
+ 01 WS-CNPJ-INV         PIC 9(12).
+ 01 WS-CNPJ-BIT REDEFINES WS-CNPJ-INV
+                        PIC 9(01) OCCURS 12.  
+*
+ 01 WS-CNPJ-FULL        PIC 9(14).
+ 01 FILLER REDEFINES WS-CNPJ-FULL.
+    05 WS-CNPJ-MAIN     PIC 9(12).
+    05 WS-CNPJ-DIGIT    PIC 9(02).
+*
+ 01 WS-DIG-AUX          PIC 9(02).
+ 01 FILLER REDEFINES WS-DIG-AUX.
+    05 WS-DIG1-AUX      PIC 9(01).
+    05 WS-DIG2-AUX      PIC 9(01).
+*
+ 77 CNT-CLI-IMP-INV     PIC 9(04) VALUE ZEROS.
+ 77 CNT-CLI-IMP         PIC 9(04) VALUE ZEROS.
+ 77 CNT-CLI-WRT         PIC 9(04) VALUE ZEROS.
+ 77 CNT-CLI-REWRT       PIC 9(04) VALUE ZEROS.
+ 77 CNT-CLI-DEL         PIC 9(04) VALUE ZEROS.
+ 77 CNT-VEN-IMP-INV     PIC 9(04) VALUE ZEROS.
+ 77 CNT-VEN-IMP         PIC 9(04) VALUE ZEROS.
+ 77 CNT-VEN-WRT         PIC 9(04) VALUE ZEROS.
+ 77 CNT-VEN-REWRT       PIC 9(04) VALUE ZEROS.
+ 77 CNT-VEN-DEL         PIC 9(04) VALUE ZEROS.
+ 77 WS-RESULTADO        PIC 9(01) VALUE ZEROS.
+ 77 WS-RESTO            PIC 9(01) VALUE ZEROS.
+ 77 WS-DIG1             PIC 9(01) VALUE ZEROS.
+ 77 WS-DIG2             PIC 9(01) VALUE ZEROS.
+ 77 A                   PIC 9(03) VALUE ZEROS. 
+ 77 SEARCH-CPF          PIC 9(11) VALUE ZEROS.   
+ 77 SEARCH-CNPJ         PIC 9(14) VALUE ZEROS.   
+
+*
+ 77 STATUS-CPF          PIC  X(01).
+    88 CPF-OK           VALUE "0".
+    88 CPF-NOK          VALUE "1". 
+*
+ 77 STATUS-CNPJ         PIC  X(01).
+    88 CNPJ-OK          VALUE "0".
+    88 CNPJ-NOK         VALUE "1". 
+*
+ 77 TL-OPT-PRINC        PIC  X(01).
+    88 TL-CADCLI        VALUE "1".
+    88 TL-CADVEN        VALUE "2".
+    88 TL-RELCLI        VALUE "3".
+    88 TL-RELVEN        VALUE "4".
+    88 TL-EXEC          VALUE "5".
+    88 TL-ENCERRA       VALUE "X".
+*
+ 77 TL-OPT-MENU         PIC  X(01).
+    88 TL-INCLUSAO      VALUE "1".
+    88 TL-ALTERACAO     VALUE "2".
+    88 TL-EXCLUSAO      VALUE "3".
+    88 TL-IMPORTACAO    VALUE "4".
+    88 TL-VOLTAR        VALUE "V".
+*
+ 77 WS-CONTADOR         PIC 9(02) VALUE ZEROS.
+ 77 TL-MSG-AVISO        PIC X(50) VALUE SPACES. 
+ 77 TL-CABEC-MENU       PIC X(21) VALUE SPACES.
+ 77 TL-CABEC-CLIENTE    PIC X(10) VALUE SPACES
+ 77 TL-CONF-MSG         PIC X(24) VALUE SPACES.
+ 77 TL-CABEC-CLIENTE    PIC X(10) VALUE SPACES.
+ 77 TL-COD-CLI          PIC 9(07) VALUE ZEROS.
+ 77 TL-CNPJ-CLI         PIC 9(14) VALUE ZEROS.
+ 77 TL-RAZAO-SOC-CLI    PIC X(40) VALUE SPACES.
+ 77 TL-LAT-CLI          PIC S9(03)V9(08) VALUE ZEROS.
+ 77 TL-LONG-CLI         PIC S9(03)V9(08) VALUE ZEROS.
+ 77 TL-CABEC-VENDEDOR   PIC X(10) VALUE SPACES.
+ 77 TL-COD-VEN          PIC 9(07) VALUE ZEROS.
+ 77 TL-CPF-VEN          PIC 9(11) VALUE ZEROS.
+ 77 TL-NOME-VEN         PIC X(40) VALUE SPACES.
+ 77 TL-LAT-VEN          PIC S9(03)V9(08) VALUE ZEROS.
+ 77 TL-LONG-VEN         PIC S9(03)V9(08) VALUE ZEROS.
+ 77 TL-IMP-NOME         PIC X(10) VALUE SPACES.
+*
+ SCREEN SECTION.
+*
+ 01 TELA-PRINC.
+    05 LINE 01 COL 30 VALUE 'CARTEIRA DE CLIENTES'.
+    05 LINE 10 COL 08 VALUE 'CADASTROS'.
+    05 LINE 11 COL 08 VALUE '1 - CADASTRO DE CLIENTE'.
+    05 LINE 12 COL 08 VALUE '2 - CADASTRO DE VENDEDOR'.
+    05 LINE 14 COL 08 VALUE 'RELATÓRIOS'.
+    05 LINE 15 COL 08 VALUE '3 - RELATÓRIO DE CLIENTES'.
+    05 LINE 16 COL 08 VALUE '4 - RELATÓRIO DE VENDEDORES'.
+    05 LINE 18 COL 08 VALUE 'EXECUTAR'.
+    05 LINE 19 COL 08 VALUE '5 - EXECUTAR DISTRIBUIÇÃO DE CLIENTES'.
+    05 LINE 21 COL 08 VALUE 'ENCERRAR'.
+    05 LINE 22 COL 08 VALUE 'X - SAIR'.
+    05 LINE 24 COL 08 VALUE 'OPÇÃO :'.
+    05 LINE 24 COL PLUS 1 PIC X(01) USING TL-OPT-PRINC.
+*
+ 01 TELA-MENU.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-MENU.
+    05 LINE 10 COL 08 VALUE '1 - INCLUSÃO'.
+    05 LINE 11 COL 08 VALUE '2 - ALTERAÇÃO'.
+    05 LINE 12 COL 08 VALUE '3 - EXCLUSÃO'.
+    05 LINE 13 COL 08 VALUE '4 - IMPORTAÇÃO'.
+    05 LINE 14 COL 08 VALUE 'V - VOLTAR'.
+    05 LINE 16 COL 08 VALUE 'OPÇÃO :'.
+    05 LINE 16 COL PLUS 1 PIC X(01) USING TL-OPT-MENU.
+*
+ 01 TELA-CLIENTE.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-CLIENTE.
+    05 TELA-CLIENTE-ARG.
+       10 LINE 10 COL 08 VALUE 'CODIGO DO CLIENTE.: '.
+       10 LINE 10 COL PLUS 1 PIC 9(07) USING TL-COD-CLI.
+    05 TELA-CLIENTE-INFO.
+       10 LINE 12 COL 08 VALUE 'CNPJ DO CLIENTE...: '.
+       10 LINE 12 COL PLUS 1 PIC 9(14) USING TL-CNPJ-CLI.   
+       10 LINE 14 COL 08 VALUE 'RAZÃO SOCIAL......: '.
+       10 LINE 14 COL PLUS 1 PIC X(40) USING TL-RAZAO-SOC-CLI.
+       10 LINE 16 COL 08 VALUE 'LATITUDE..........: '.
+       10 LINE 16 COL PLUS 1 PIC S9(03)V9(08) USING TL-LAT-CLI.         
+       10 LINE 18 COL 08 VALUE 'LONGITUDE.........: '.
+       10 LINE 18 COL PLUS 1 PIC S9(03)V9(08) USING TL-LONG-CLI.        
+*
+ 01 TELA-VENDEDOR.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-VENDEDOR.
+    05 TELA-VENDEDOR-ARG.
+       10 LINE 10 COL 08 VALUE 'CODIGO DO VENDEDOR.: '.
+       10 LINE 10 COL PLUS 1 PIC 9(07) USING TL-COD-VEN.
+    05 TELA-VENDEDOR-INFO.
+       10 LINE 12 COL 08 VALUE 'CPF DO VENDEDOR....: '.
+       10 LINE 12 COL PLUS 1 PIC 9(14) USING TL-CPF-VEN.   
+       10 LINE 14 COL 08 VALUE 'NOME DO VENDEDOR...: '.
+       10 LINE 14 COL PLUS 1 PIC X(40) USING TL-NOME-VEN.
+       10 LINE 16 COL 08 VALUE 'LATITUDE..........: '.
+       10 LINE 16 COL PLUS 1 PIC S9(03)V9(08) USING TL-LAT-VEN.         
+       10 LINE 18 COL 08 VALUE 'LONGITUDE.........: '.
+       10 LINE 18 COL PLUS 1 PIC S9(03)V9(08) USING TL-LONG-VEN. 
+*
+ 01 TELA-MSG-AVISO.
+    05 LINE 40 COL 05 VALUE 'MENSAGEM : '.
+    05 LINE 40 COL PLUS 1 PIC X(32) USING TL-MSG-AVISO.
+*
+01 TELA-CONFIRMA.
+    05 LINE 40 COL 08 PIC X(50) FROM TL-CONF-MSG.
+    05 LINE 40 COL PLUS 1 PIC X(1) USING TL-CONF-OPT. 
+*
+ 01 TELA-IMPORT.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-CLI-IMP.
+    05 TELA-IMP-ARG.
+       10 LINE 10 COL 08 VALUE 'INFORME O NOME DO ARQUIVO.: '.
+       10 LINE 10 COL PLUS 1 PIC X(10) USING TL-IMP-NOME.   
+*    
+ PROCEDURE DIVISION.
+*
+    PERFORM ABRE-ARQ-IO THRU ABRE-ARQ-IO-FIM.
+
+    PERFORM UNTIL TL-ENCERRA
+*
+      INITIALIZE TL-OPT-PRINC TL-MSG-AVISO.
+*
+      DISPLAY TELA-PRINC.
+      ACCEPT  TL-OPT-PRINC.
+* 
+      EVALUATE TRUE
+*
+          WHEN TL-CADCLI  PERFORM MENU-CADASTRO     THRU MENU-CADASTRO-FIM
+*
+          WHEN TL-CADVEN  PERFORM MENU-CADASTRO     THRU MENU-CADASTRO-FIM
+*
+          WHEN TL-RELCLI  PERFORM MENU-REL-CLIENTE  THRU MENU-REL-CLIENTE-FIM
+*
+          WHEN TL-RELVEN  PERFORM MENU-REL-VENDEDOR THRU MENU-REL-VENDEDOR-FIM
+*
+          WHEN TL-EXEC    PERFORM MENU-EXEC-DIST    THRU MENU-EXEC-DIST-FIM
+*
+          WHEN TL-ENCERRA DISPLAY 'ENCERRANDO SESSÃO...'
+*
+          WHEN OTHER       MOVE C-OPCAO-INV TO TL-MSG-AVISO
+                           DISPLAY TELA-MSG-AVISO 
+*
+      END-EVALUATE
+* 
+    END-PERFORM. 
+
+    PERFORM FECHA-ARQ-IO THRU FECHA-ARQ-IO-FIM.
+
+    STOP RUN.
+*
+* ------------------------------
+* ------ ABRE OS ARQUIVOS ------
+* ------------------------------
+ ABRE-ARQ-IO.
+*
+   OPEN I-O ARQ-CLIENTE.
+*
+* SE ARQUIVO JÁ ABERTO, FECHAR E ABRIR NOVAMENTE
+*
+   IF WS-RESULT-35 
+      CLOSE ARQ-CLIENTE
+      OPEN I-O ARQ-CLIENTE
+   END-IF.
+       
+   OPEN I-O ARQ-VENDEDOR.
+*
+* SE ARQUIVO JÁ ABERTO, FECHAR E ABRIR NOVAMENTE
+*
+   IF WS-RESULT-35 
+      CLOSE ARQ-VENDEDOR
+      OPEN I-O ARQ-VENDEDOR
+   END-IF.
+*
+   OPEN INPUT ARQ-CLI-IMP,
+              ARQ-VEN-IMP.
+
+ ABRE-ARQ-IO-FIM.
+
+* -----------------------------
+* ----- FECHA OS ARQUIVOS -----
+* -----------------------------
+ FECHA-ARQ-IO.
+*
+   CLOSE ARQ-CLIENTE,
+         ARQ-VENDEDOR,
+         ARQ-CLI-IMP,
+         ARQ-VEN-IMP.
+*
+ FECHA-ARQ-IO-FIM.       
+*
+* --------------------------------------------------
+* ------ MENU CADASTRO DE CLIENTES/VENDEDORES ------
+* --------------------------------------------------
+ MENU-CADASTRO.
+*
+    IF TL-CADCLI 
+       MOVE C-CABEC-CLI  TO TL-CABEC-MENU
+    ELSE
+       MOVE C-CABEC-VEND TO TL-CABEC-MENU
+    END-IF. 
+*
+    PERFORM UNTIL TL-VOLTAR
+*
+      INITIALIZE TL-OPT-MENU TL-MSG-AVISO.
+*
+      DISPLAY TELA-MENU.
+      ACCEPT  TL-OPT-MENU.
+*
+      EVALUATE TRUE
+*
+          WHEN TL-INCLUSAO    PERFORM INCLUSAO        THRU INCLUSAO-FIM
+*  
+          WHEN TL-ALTERACAO   PERFORM ALTERACAO       THRU ALTERACAO-FIM
+*
+          WHEN TL-EXCLUSAO    PERFORM EXCLUSAO        THRU EXCLUSAO-FIM
+*
+          WHEN TL-IMPORTACAO  PERFORM IMPORTACAO      THRU IMPORTACAO-FIM
+*
+          WHEN OTHER           IF NOT VOLTA-KEY
+                                  MOVE C-OPCAO-INV TO TL-MSG-AVISO
+                                  DISPLAY TELA-MSG-AVISO
+                               END-IF 
+*
+      END-EVALUATE
+* 
+    END-PERFORM. 
+*
+ MENU-CADASTRO-FIM.
+*
+* ---------------------------------------------
+* ------ IMPORTACAO DE CLIENTE / VENDEDOR ----- 
+* ---------------------------------------------
+ IMPORTACAO.
+*
+    INITIALIZE TL-CONF-OPT.
+*
+    MOVE C-IMPORTACAO TO TL-CABEC-CLI-IMP.
+*
+    IF TL-CADCLI 
+       DISPLAY TELA-IMPORT
+       ACCEPT TELA-IMP-ARG
+       ACCEPT WS-TECLA FROM ESCAPE KEY
+       IF NOT ESCAPE-KEY 
+          MOVE 'N' TO TL-CONF-OPT
+          ACCEPT TELA-CONFIRMA
+          IF TL-CONF-OPT = 'S'  
+            PERFORM UNTIL 1 <> 1     
+               READ ARQ-CLI-IMP NEXT
+                                AT END
+                                   EXIT PERFORM
+*
+                 PERFORM VALIDA-CNPJ THRU VALIDA-CNPJ-FIM
+                 IF CNPJ-OK
+                    MOVE ICLI-COD TO CLI-COD.	
+                    READ ARQ-CLIENTE
+                    IF NOT WS-RESULT-OK 
+                       MOVE ICLI-CNPJ TO CLI-CNPJ
+                       READ ARQ-CLIENTE KEY IS CLI-CNPJ
+                       IF NOT WS-RESULT-OK 
+                           MOVE ICLI-RAZAO-SOC TO CLI-RAZAO-SOC
+                           MOVE ICLI-LAT       TO CLI-LAT
+                           MOVE ICLI-LONG      TO CLI-LONG
+*
+                           WRITE REG-CLI
+                           ADD  1              TO CNT-CLI-IMP 
+                       ELSE
+                           ADD  1              TO CNT-CLI-IMP-INV 
+                       END-IF
+                  ELSE
+                     ADD  1  TO CNT-CLI-IMP-INV  
+                  END-IF. 
+               END-READ. 
+*                    
+            END-PERFORM
+    ELSE
+       DISPLAY TELA-IMPORT
+       ACCEPT TELA-IMP-ARG
+       ACCEPT WS-TECLA FROM ESCAPE KEY
+       IF NOT ESCAPE-KEY 
+          MOVE 'N' TO TL-CONF-OPT
+          ACCEPT TELA-CONFIRMA
+          IF TL-CONF-OPT = 'S'  
+            PERFORM UNTIL 1 <> 1     
+               READ ARQ-VEN-IMP NEXT
+                                AT END
+                                   EXIT PERFORM
+*
+                 PERFORM VALIDA-CPF THRU VALIDA-CPF-FIM
+                 IF CPF-OK
+                    MOVE IVEND-COD TO VEN-COD.	
+                    READ ARQ-VENDEDOR
+                    IF NOT WS-RESULT-OK 
+                       MOVE IVEND-CPF TO VEN-CPF
+                       READ ARQ-VENDEDOR KEY IS VEN-CPF
+                       IF NOT WS-RESULT-OK 
+                           MOVE IVEND-NOME     TO VEND-NOME
+                           MOVE IVEND-LAT      TO VEND-LAT
+                           MOVE IVEND-LONG     TO VEND-LONG
+*
+                           WRITE REG-VENDEDOR
+                           ADD  1              TO CNT-VEN-IMP 
+                       ELSE
+                           ADD  1              TO CNT-VEN-IMP-INV 
+                       END-IF
+                  ELSE
+                     ADD  1  TO CNT-CLI-VEN-INV  
+                  END-IF. 
+               END-READ. 
+*                    
+    END-IF. 
+
+ IMPORTACAO-FIM.
+*
+* --------------------------------------------
+* ------ INCLUSÃO DE CLIENTE / VENDEDOR ------
+* --------------------------------------------
+ INCLUSAO.
+*
+    MOVE "0"   TO WS-OPERACAO
+*
+    INITIALIZE TL-RAZAO-SOC-CLI
+               TL-LAT-CLI 
+               TL-LONG-CLI  
+               TL-CNPJ-CLI
+               TL-COD-CLI
+               TL-CONF-OPT 
+               TL-NOME-VEN
+               TL-LAT-VEN 
+               TL-LONG-VEN  
+               TL-CPF-VEN
+               TL-COD-VEN
+*
+    PERFORM UNTIL WS-OPERACAO-FIM 
+*
+      INITIALIZE TL-MSG-AVISO.
+      MOVE C-INCLUSAO TO TL-CABEC-CLIENTE.
+*
+      IF TL-CADCLI 
+         DISPLAY TELA-CLIENTE
+         ACCEPT TELA-CLIENTE
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE
+            PERFORM TRATA-INCLUSAO-CLIENTE THRU TRATA-INCLUSAO-CLINTE-FIM
+         END-IF
+      ELSE
+         DISPLAY TELA-VENDEDOR
+         ACCEPT TELA-VENDEDOR
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE
+            PERFORM TRATA-INCLUSAO-VENDEDOR THRU TRATA-INCLUSAO-VENDEDOR-FIM
+         END-IF
+      END-IF.
+*
+    END-PERFORM.
+
+ INCLUSAO-FIM.
+*
+* --------------------------------------------
+* ------ VALIDAÇÃO INCLUSÃO DE VENDEDOR ------ 
+* --------------------------------------------
+ TRATA-INCLUSAO-VENDEDOR.
+*
+         IF TL-NOME-VEN EQUAL SPACES 
+            MOVE C-NOME-INV TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE
+            IF TL-LAT-VEN EQUAL ZEROS OR TL-LONG-VEN EQUAL ZEROS 
+               MOVE C-LAT-LONG-INV TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE TL-CPF-VEN TO SEARCH-CPF 
+               PERFORM VALIDA-CPF THRU VALIDA-CPF-FIM
+               IF CPF-NOK 
+                  MOVE C-CPF-INV TO TL-MSG-AVISO
+                  DISPLAY TELA-MSG-AVISO 
+               ELSE
+                  MOVE TL-COD-VEN TO VEND-COD
+                  READ ARQ-VENDEDOR
+                  IF NOT WS-RESULT-OK 
+                     MOVE TL-CPF-VEN TO VEND-CPF
+                     READ ARQ-VENDEDOR KEY IS VEND-CPF
+                     IF WS-RESULT-OK 
+                        MOVE C-CPF-VEN-EXISTE TO TL-MSG-AVISO
+                        DISPLAY TELA-MSG-AVISO 
+                     ELSE
+                        MOVE C-CONF-INCLUSAO TO TL-CONF-MSG
+                        DISPLAY TELA-CONFIRMA
+                        MOVE 'N' TO TL-CONF-OPT
+                        ACCEPT TELA-CONFIRMA
+                        IF TL-CONF-OPT = 'S' 
+                           MOVE TL-NOME-VEN  TO VEND-NOME
+                           MOVE TL-LAT-VEN   TO VEND-LAT
+                           MOVE TL-LONG-VEN  TO VEND-LONG
+*
+                           WRITE REG-CLI
+                           ADD  1            TO CNT-VEN-WRT 
+                           MOVE "1"          TO WS-OPERACAO
+                           MOVE C-SUCESSO    TO TL-MSG-AVISO
+                           DISPLAY TELA-MSG-AVISO
+                        END-IF. 
+                     END-IF.
+                  ELSE
+                     MOVE C-COD-VEN-EXISTE TO TL-MSG-AVISO
+                     DISPLAY TELA-MSG-AVISO 
+                  END-IF. 
+               END-IF.
+            END-IF.
+         END-IF.
+*
+ TRATA-INCLUSAO-VENDEDOR-FIM.
+*
+* -------------------------------------------
+* ------ VALIDAÇÃO INCLUSÃO DE CLIENTE ------
+* -------------------------------------------
+ TRATA-INCLUSAO-CLIENTE.
+*
+         IF TL-RAZAO-SOC-CLI EQUAL SPACES 
+            MOVE C-RAZAO-SOC-INV TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE
+            IF TL-LAT-CLI EQUAL ZEROS OR TL-LONG-CLI EQUAL ZEROS 
+               MOVE C-LAT-LONG-INV TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE TL-CNPJ-CLI TO SEARCH-CNPJ 
+               PERFORM VALIDA-CNPJ THRU VALIDA-CNPJ-FIM
+               IF CNPJ-NOK 
+                  MOVE C-CNPJ-INV TO TL-MSG-AVISO
+                  DISPLAY TELA-MSG-AVISO 
+               ELSE
+                  MOVE TL-COD-CLI TO CLI-COD
+                  READ ARQ-CLIENTE
+                  IF NOT WS-RESULT-OK 
+                     MOVE TL-CNPJ-CLI TO CLI-CNPJ
+                     READ ARQ-CLIENTE KEY IS CLI-CNPJ
+                     IF WS-RESULT-OK 
+                        MOVE C-CNPJ-CLI-EXISTE TO TL-MSG-AVISO
+                        DISPLAY TELA-MSG-AVISO 
+                     ELSE
+                        MOVE C-CONF-INCLUSAO TO TL-CONF-MSG
+                        DISPLAY TELA-CONFIRMA
+                        MOVE 'N' TO TL-CONF-OPT
+                        ACCEPT TELA-CONFIRMA
+                        IF TL-CONF-OPT = 'S' 
+                           MOVE TL-RAZAO-SOC-CLI TO CLI-RAZAO-SOC
+                           MOVE TL-LAT-CLI   TO CLI-LAT
+                           MOVE TL-LONG-CLI  TO CLI-LONG
+*
+                           WRITE REG-CLI
+                           ADD  1            TO CNT-CLI-WRT 
+                           MOVE "1"          TO WS-OPERACAO
+                           MOVE C-SUCESSO    TO TL-MSG-AVISO
+                           DISPLAY TELA-MSG-AVISO
+                        END-IF. 
+                     END-IF.
+                  ELSE
+                     MOVE C-COD-CLI-EXISTE TO TL-MSG-AVISO
+                     DISPLAY TELA-MSG-AVISO 
+                  END-IF. 
+               END-IF.
+            END-IF.
+         END-IF.
+*
+ TRATA-INCLUSAO-CLIENTE-FIM.
+*
+* --------------------------------------------
+* ------ ALTERAÇÃO DE CLIENTE / VENDEDOR ----- 
+* --------------------------------------------
+ ALTERACAO.
+*
+    MOVE "0"   TO WS-OPERACAO
+*
+    INITIALIZE TL-RAZAO-SOC-CLI
+               TL-LAT-CLI 
+               TL-LONG-CLI  
+               TL-CNPJ-CLI
+               TL-COD-CLI
+               TL-CONF-OPT 
+               TL-NOME-VEN
+               TL-LAT-VEN 
+               TL-LONG-VEN  
+               TL-CPF-VEN
+               TL-COD-VEN
+*
+    PERFORM UNTIL WS-OPERACAO-FIM 
+*
+      INITIALIZE TL-MSG-AVISO.
+      MOVE C-ALTERACAO TO TL-CABEC-CLIENTE.
+*
+      IF TL-CADCLI 
+         DISPLAY TELA-CLIENTE
+         ACCEPT TELA-CLIENTE-ARG
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE 
+            READ ARQ-CLIENTE
+            IF NOT WS-RESULT-OK 
+               MOVE C-CLIENTE-NOTFOUND TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE CLI-COD       TO TL-RAZAO-SOC-CLI
+               MOVE CLI-LAT       TO TL-LAT-CLI 
+               MOVE CLI-LONG      TO TL-LONG-CLI  
+               MOVE CLI-CNPJ      TO TL-CNPJ-CLI
+*
+               DISPLAY TELA-CLIENTE
+               ACCEPT TELA-CLIENTE-INFO
+
+               ACCEPT WS-TECLA FROM ESCAPE KEY
+               IF ESCAPE-KEY 
+                  MOVE '1' TO WS-OPERACAO
+               ELSE
+                  PERFORM TRATA-ALTERACAO-CLIENTE THRU TRATA-ALTERACAO-CLIENTE-FIM
+               END-IF.         
+            END-IF.         
+         END-IF
+      ELSE
+         DISPLAY TELA-VENDEDOR
+         ACCEPT TELA-VENDEDOR-ARG
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE 
+            READ ARQ-VENDEDOR
+            IF NOT WS-RESULT-OK 
+               MOVE C-VENDEDOR-NOTFOUND TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE VEND-NOME     TO TL-NOME-VEN
+               MOVE VEND-LAT      TO TL-LAT-VEN 
+               MOVE VEND-LONG     TO TL-LONG-VEN  
+               MOVE VEND-CPF      TO TL-CPF-VEN
+*
+               DISPLAY TELA-VENDEDOR
+               ACCEPT TELA-VENDEDOR-INFO    
+               ACCEPT WS-TECLA FROM ESCAPE KEY
+               IF ESCAPE-KEY 
+                  MOVE '1' TO WS-OPERACAO
+               ELSE
+                  PERFORM TRATA-ALTERACAO-VENDEDOR THRU TRATA-ALTERACAO-VENDEDOR-FIM
+               END-IF.         
+            END-IF.  
+           
+         END-IF
+      END-IF.
+*
+    END-PERFORM.
+
+ ALTERACAO-FIM.
+*
+* --------------------------------------------
+* ------ VALIDAÇÃO ALTERACAO DE VENDEDOR -----
+* --------------------------------------------
+ TRATA-ALTERACAO-VENDEDOR.
+*
+         IF TL-NOME-VEN EQUAL SPACES 
+            MOVE C-NOME-INV TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE
+            IF TL-LAT-VEN EQUAL ZEROS OR TL-LONG-VEN EQUAL ZEROS 
+               MOVE C-LAT-LONG-INV TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE TL-CPF-VEN TO SEARCH-CPF 
+               PERFORM VALIDA-CPF THRU VALIDA-CPF-FIM
+               IF CPF-NOK 
+                  MOVE C-CPF-INV TO TL-MSG-AVISO
+                  DISPLAY TELA-MSG-AVISO 
+               ELSE
+                  MOVE TL-COD-VEN TO VEND-COD
+                  READ ARQ-VENDEDOR
+                  IF WS-RESULT-OK 
+                        MOVE C-CONF-ALTERACAO TO TL-CONF-MSG
+                        DISPLAY TELA-CONFIRMA
+                        MOVE 'N' TO TL-CONF-OPT
+                        ACCEPT TELA-CONFIRMA
+                        IF TL-CONF-OPT = 'S' 
+                           MOVE TL-NOME-VEN  TO VEND-NOME
+                           MOVE TL-LAT-VEN   TO VEND-LAT
+                           MOVE TL-LONG-VEN  TO VEND-LONG
+*
+                           REWRITE REG-VENDEDOR
+*
+                           IF NOT WS-RESULT-OK 
+                              MOVE C-PROB-UPD   TO TL-MSG-AVISO
+                              DISPLAY TELA-MSG-AVISO
+                           ELSE         
+                              ADD  1            TO CNT-VEN-REWRT 
+                              MOVE "1"          TO WS-OPERACAO
+                              MOVE C-SUCESSO    TO TL-MSG-AVISO
+                              DISPLAY TELA-MSG-AVISO
+                           END-IF.  
+                       END-IF.
+                  END-IF.
+              END-IF.
+           END-IF.
+*
+ TRATA-ALTERACAO-VENDEDOR-FIM.
+*
+* -------------------------------------------
+* ------ VALIDAÇÃO ALTERACAO DE CLIENTE ------
+* -------------------------------------------
+ TRATA-ALTERACAO-CLIENTE.
+*
+         IF TL-RAZAO-SOC-CLI EQUAL SPACES 
+            MOVE C-RAZAO-SOC-INV TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE
+            IF TL-LAT-CLI EQUAL ZEROS OR TL-LONG-CLI EQUAL ZEROS 
+               MOVE C-LAT-LONG-INV TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE TL-CNPJ-CLI TO SEARCH-CNPJ 
+               PERFORM VALIDA-CNPJ THRU VALIDA-CNPJ-FIM
+               IF CNPJ-NOK 
+                  MOVE C-CNPJ-INV TO TL-MSG-AVISO
+                  DISPLAY TELA-MSG-AVISO 
+               ELSE
+                  MOVE TL-COD-CLI TO CLI-COD
+                  READ ARQ-CLIENTE
+                  IF WS-RESULT-OK 
+                        MOVE C-CONF-ALTERACAO TO TL-CONF-MSG
+                        DISPLAY TELA-CONFIRMA
+                        MOVE 'N' TO TL-CONF-OPT
+                        ACCEPT TELA-CONFIRMA
+                        IF TL-CONF-OPT = 'S' 
+                           MOVE TL-RAZAO-SOC-CLI TO CLI-RAZAO-SOC
+                           MOVE TL-LAT-CLI   TO CLI-LAT
+                           MOVE TL-LONG-CLI  TO CLI-LONG
+*
+                           REWRITE REG-CLI
+*
+                           IF NOT WS-RESULT-OK 
+                              MOVE C-PROB-UPD   TO TL-MSG-AVISO
+                              DISPLAY TELA-MSG-AVISO
+                           ELSE         
+                              ADD  1            TO CNT-CLI-REWRT 
+                              MOVE "1"          TO WS-OPERACAO
+                              MOVE C-SUCESSO    TO TL-MSG-AVISO
+                              DISPLAY TELA-MSG-AVISO
+                           END-IF.  
+                       END-IF.
+                  END-IF.
+              END-IF.
+           END-IF.
+*
+ TRATA-ALTERACAO-CLIENTE-FIM.
+*
+* -------------------------------------------
+* ------ EXCLUSÃO DE CLIENTE / VENDEDOR -----
+* -------------------------------------------
+ EXCLUSAO.
+*
+    MOVE "0"   TO WS-OPERACAO
+*
+    INITIALIZE TL-RAZAO-SOC-CLI
+               TL-LAT-CLI 
+               TL-LONG-CLI  
+               TL-CNPJ-CLI
+               TL-COD-CLI
+               TL-CONF-OPT 
+               TL-NOME-VEN
+               TL-LAT-VEN 
+               TL-LONG-VEN  
+               TL-CPF-VEN
+               TL-COD-VEN
+*
+    PERFORM UNTIL WS-OPERACAO-FIM 
+*
+      INITIALIZE TL-MSG-AVISO.
+      MOVE C-EXLUSAO TO TL-CABEC-CLIENTE.
+*
+      IF TL-CADCLI 
+         DISPLAY TELA-CLIENTE
+         ACCEPT TELA-CLIENTE-ARG
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE 
+            READ ARQ-CLIENTE
+            IF NOT WS-RESULT-OK 
+               MOVE C-CLIENTE-NOTFOUND TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE CLI-RAZAO-SOC TO TL-RAZAO-SOC-CLI
+               MOVE CLI-LAT       TO TL-LAT-CLI 
+               MOVE CLI-LONG      TO TL-LONG-CLI  
+               MOVE CLI-CNPJ      TO TL-CNPJ-CLI
+*
+               DISPLAY TELA-CLIENTE 
+               ACCEPT WS-TECLA FROM ESCAPE KEY
+               IF ESCAPE-KEY 
+                  MOVE '1' TO WS-OPERACAO
+               ELSE
+                  PERFORM TRATA-EXCLUSAO-CLIENTE THRU TRATA-EXCLUSAO-CLIENTE-FIM
+               END-IF.         
+            END-IF.  
+           
+         END-IF
+      ELSE
+         DISPLAY TELA-VENDEDOR
+         ACCEPT TELA-VENDEDOR-ARG
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE 
+            READ ARQ-VENDEDOR
+            IF NOT WS-RESULT-OK 
+               MOVE C-VENDEDOR-NOTFOUND TO TL-MSG-AVISO
+               DISPLAY TELA-MSG-AVISO
+            ELSE
+               MOVE VEND-NOME     TO TL-NOME-VEN
+               MOVE VEND-LAT      TO TL-LAT-VEN 
+               MOVE VEND-LONG     TO TL-LONG-VEN  
+               MOVE VEND-CPF      TO TL-CPF-VEN
+*
+               DISPLAY TELA-VENDEDOR 
+               ACCEPT WS-TECLA FROM ESCAPE KEY
+               IF ESCAPE-KEY 
+                  MOVE '1' TO WS-OPERACAO
+               ELSE
+                  PERFORM TRATA-EXCLUSAO-VENDEDOR THRU TRATA-EXCLUSAO-VENDEDOR-FIM
+               END-IF.         
+            END-IF.  
+           
+         END-IF
+      END-IF.
+*
+    END-PERFORM.
+
+ EXCLUSAO-FIM.
+*
+* -----------------------------
+* ------ EXCLUI VENDEDOR ------
+* -----------------------------
+ TRATA-EXCLUSAO-VENDEDOR.
+*
+   MOVE TL-COD-VEN TO VEND-COD
+   READ ARQ-VENDEDOR
+   IF WS-RESULT-OK 
+      MOVE C-CONF-EXCLUSAO TO TL-CONF-MSG
+      DISPLAY TELA-CONFIRMA
+      MOVE 'N' TO TL-CONF-OPT
+      ACCEPT TELA-CONFIRMA
+      IF TL-CONF-OPT = 'S' 
+         DELETE ARQ-VENDEDOR
+*
+         IF NOT WS-RESULT-OK 
+            MOVE C-PROB-DEL   TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE         
+            ADD  1            TO CNT-VEN-DEL 
+            MOVE "1"          TO WS-OPERACAO
+            MOVE C-SUCESSO    TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         END-IF.  
+       END-IF.
+    END-IF.          
+*
+ TRATA-EXCLUSAO-VENDEDOR-FIM.
+*
+* ----------------------------
+* ------ EXCLUI CLIENTE ------
+* ----------------------------
+ TRATA-EXCLUSAO-CLIENTE.
+*
+   MOVE TL-COD-CLI TO CLI-COD
+   READ ARQ-CLIENTE
+   IF WS-RESULT-OK 
+      MOVE C-CONF-EXCLUSAO TO TL-CONF-MSG
+      DISPLAY TELA-CONFIRMA
+      MOVE 'N' TO TL-CONF-OPT
+      ACCEPT TELA-CONFIRMA
+      IF TL-CONF-OPT = 'S' 
+         DELETE ARQ-CLI
+*
+         IF NOT WS-RESULT-OK 
+            MOVE C-PROB-DEL   TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         ELSE         
+            ADD  1            TO CNT-CLI-DEL 
+            MOVE "1"          TO WS-OPERACAO
+            MOVE C-SUCESSO    TO TL-MSG-AVISO
+            DISPLAY TELA-MSG-AVISO
+         END-IF.  
+       END-IF.
+    END-IF.          
+*
+ TRATA-EXCLUSAO-CLIENTE-FIM.
+*
+* ------------------------------------
+* ------ VALIDA CPF DO VENDEDOR ------
+* ------------------------------------
+ VALIDA-CPF.
+*
+   INITIALIZE WS-CPF-FULL
+              WS-DIG1
+              WS-DIG2
+              A
+              WS-RESULTADO
+              WS-RESTO
+              WS-DIG-AUX
+* 
+   MOVE "0" TO CPF-STATUS
+
+* VERIFICA NA TABELA DE CPF'S INVALIDOS
+  
+   PERFORM VARYING WS-CONTADOR FROM 1 BY 1 UNTIL
+           CONTADOR > 10
+
+      IF CPF-INV(WS-CONTADOR) = SEARCH-CPF
+         MOVE "1" TO STATUS-CPF  
+      END-IF 
+
+   END-PERFORM
+*
+* VERIFICA DIGITO VERIFICADOR
+*
+   IF CPF-OK 
+      MOVE SEARCH      TO WS-CPF-FULL 
+      MOVE WS-CPF-MAIN TO WS-CPF-INV
+*
+* PRIMEIRO DIGITO VERIFICADOR
+*
+      COMPUTE A = (10 * WS-CPF-BIT(1) +
+                   09 * WS-CPF-BIT(2) +  
+                   08 * WS-CPF-BIT(3) +  
+                   07 * WS-CPF-BIT(4) +  
+                   06 * WS-CPF-BIT(5) +  
+                   05 * WS-CPF-BIT(6) +  
+                   04 * WS-CPF-BIT(7) +  
+                   03 * WS-CPF-BIT(8) +
+                   02 * WS-CPF-BIT(9))
+*
+      DIVIDE A BY 11 GIVING WS-RESULTADO
+                     REMAINDER WS-RESTO
+*
+      COMPUTE WS-DIG1 = 11 - WS-RESTO 
+*
+* SEGUNDO DIGITO VERIFICADOR
+*
+      COMPUTE A = (11 * WS-CPF-BIT(1) +
+                   10 * WS-CPF-BIT(2) +  
+                   09 * WS-CPF-BIT(3) +  
+                   08 * WS-CPF-BIT(4) +  
+                   07 * WS-CPF-BIT(5) +  
+                   06 * WS-CPF-BIT(6) +  
+                   05 * WS-CPF-BIT(7) +  
+                   04 * WS-CPF-BIT(8) +
+                   03 * WS-CPF-BIT(9) +
+                   02 * 09)
+*
+      DIVIDE A BY 11 GIVING WS-RESULTADO
+                     REMAINDER WS-RESTO
+*
+      COMPUTE WS-DIG2 = 11 - WS-RESTO 
+*
+      MOVE WS-DIG1 TO WS-DIG1-AUX
+      MOVE WS-DIG2 TO WS-DIG2-AUX
+*
+      IF WS-CPF-DIG NOT EQUAL WS-DIG-AUX
+         MOVE "1" TO STATUS-CPF  
+      END-IF.    
+
+   END-IF
+
+ VALIDA-CPF-FIM
+*
+* ------------------------------------
+* ------ VALIDA CNPJ DO CLIENTE ------
+* ------------------------------------
+ VALIDA-CPNJ.
+*
+   INITIALIZE WS-CNPJ-FULL
+              WS-DIG1
+              WS-DIG2
+              A
+              WS-RESULTADO
+              WS-RESTO
+              WS-DIG-AUX
+* 
+   MOVE "0" TO CNPJ-STATUS
+
+* VERIFICA NA TABELA DE CNPJ'S INVALIDOS
+  
+   PERFORM VARYING WS-CONTADOR FROM 1 BY 1 UNTIL
+           CONTADOR > 14
+
+      IF CNPJ-INV(WS-CONTADOR) = SEARCH-CNPJ
+         MOVE "1" TO STATUS-CNPJ  
+      END-IF 
+
+   END-PERFORM
+*
+* VERIFICA DIGITO VERIFICADOR
+*
+   IF CNPJ-OK 
+      MOVE SEARCH-CNPJ  TO WS-CNPJ-FULL 
+      MOVE WS-CNPJ-MAIN TO WS-CNPJ-INV
+*
+* PRIMEIRO DIGITO VERIFICADOR
+*
+      COMPUTE A = (05 * WS-CNPJ-BIT(01) +
+                   04 * WS-CNPJ-BIT(02) +  
+                   03 * WS-CNPJ-BIT(03) +  
+                   02 * WS-CNPJ-BIT(04) +  
+                   09 * WS-CNPJ-BIT(05) +  
+                   08 * WS-CNPJ-BIT(06) +  
+                   07 * WS-CNPJ-BIT(07) +  
+                   06 * WS-CNPJ-BIT(08) +
+                   05 * WS-CNPJ-BIT(09) +
+                   04 * WS-CNPJ-BIT(10) +
+                   03 * WS-CNPJ-BIT(11) +
+                   02 * WS-CNPJ-BIT(12))
+*
+      DIVIDE A BY 11 GIVING WS-RESULTADO
+                     REMAINDER WS-RESTO
+*
+      COMPUTE WS-DIG1 = 11 - WS-RESTO 
+*
+* SEGUNDO DIGITO VERIFICADOR
+*
+      COMPUTE A = (06 * WS-CNPJ-BIT(01) +
+                   05 * WS-CNPJ-BIT(02) +  
+                   04 * WS-CNPJ-BIT(03) +  
+                   03 * WS-CNPJ-BIT(04) +  
+                   02 * WS-CNPJ-BIT(05) +  
+                   09 * WS-CNPJ-BIT(06) +  
+                   08 * WS-CNPJ-BIT(07) +  
+                   07 * WS-CNPJ-BIT(08) +
+                   06 * WS-CNPJ-BIT(09) +
+                   05 * WS-CNPJ-BIT(10) +
+                   04 * WS-CNPJ-BIT(11) +
+                   03 * WS-CNPJ-BIT(12) +
+                   02 * 1)
+*
+      DIVIDE A BY 11 GIVING WS-RESULTADO
+                     REMAINDER WS-RESTO
+*
+      COMPUTE WS-DIG2 = 11 - WS-RESTO 
+*
+      MOVE WS-DIG1 TO WS-DIG1-AUX
+      MOVE WS-DIG2 TO WS-DIG2-AUX
+*
+      IF WS-CNPJ-DIG NOT EQUAL WS-DIG-AUX
+         MOVE "1" TO STATUS-CNPJ  
+      END-IF.    
+
+   END-IF
+*
+ VALIDA-CNPJ-FIM
+*
