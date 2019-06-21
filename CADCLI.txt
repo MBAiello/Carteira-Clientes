@@ -10,14 +10,16 @@
              ACCESS MODE         IS DYNAMIC
              RECORD KEY          IS CLI-COD
              ALTERNATE KEY       IS CLI-CNPJ
+             ALTERNATE KEY       IS CLI-RAZAO-SOC
              LOCK MODE           IS MANUAL
              FILE STATUS         IS WS-RESULTADO-ACESSO.
 *
       SELECT ARQ-VENDEDOR ASSIGN TO DISK WID-ARQ-VENDEDOR
-             ORGANIZATION        IS INDEXED
+             ORGANIZATION        IS INDEXED	
              ACCESS MODE         IS DYNAMIC
              RECORD KEY          IS VEND-COD
              ALTERNATE KEY       IS VEND-CPF
+             ALTERNATE KEY       IS VEND-NOME
              LOCK MODE           IS MANUAL
              FILE STATUS         IS WS-RESULTADO-ACESSO.
 *
@@ -25,7 +27,12 @@
              ORGANIZATION        IS SEQUENTIAL.
 *
       SELECT ARQ-VEN-IMP  ASSIGN TO DISK WID-ARQ-VEN-IMP
-             ORGANIZATION        IS SEQUENTIAL.
+             ORGANIZATION        IS SEQUENTIAL
+             FILE STATUS         IS WS-RESULTADO-ACESSO.
+*
+      SELECT IMPRESSORA   ASSIGN TO PRINTER
+             ORGANIZATION        IS LINE SEQUENTIAL
+             FILE STATUS         IS WS-RESULTADO-ACESSO.
 *
  DATA DIVISION.
  FILE SECTION.
@@ -69,6 +76,11 @@
     05 IVEND-NOME       PIC  X(40).
     05 IVEND-LAT        PIC S9(03)V9(08).
     05 IVEND-LONG       PIC S9(03)V9(08).
+* 
+ FD IMPRESSORA
+    LABEL RECORD IS OMITTED.
+*
+ 01 REG-IMPRESSORA      PIC X(133).
 *
  WORKING-STORAGE SECTION.
 *
@@ -97,6 +109,12 @@
  78 C-CONF-EXCLUSAO     PIC  X(24) VALUE 'CONFIRMA EXCLUSAO? <S/N> '.
  78 C-CLIENTE-NOTFOUND  PIC  X(22) VALUE 'CLIENTE NÃO ENCONTRADO'. 
  78 C-VENDEDOR-NOTFOUND PIC  X(22) VALUE 'VENDEDOR NÃO ENCONTRADO'. 
+ 78 C-CABEC-RELCLI      PIC  X(21) VALUE 'RELATORIO DE CLIENTE '.
+ 78 C-CABEC-RELVEND     PIC  X(21) VALUE 'RELATORIO DE VENDEDOR'.
+ 78 C-TP-ORD-INV        PIC  X(26) VALUE 'ORDENAÇÃO DEVE SER A OU D'.
+ 78 C-TP-CLA-INV        PIC  X(22) VALUE 'CLASSIFICAÇÃO INVÁLIDA'.
+ 78 C-TP-FIL-INV        PIC  X(24) VALUE 'OPÇÃO DE FILTRO INVÁLIDO'.
+ 78 C-LINHA-MAX         PIC  9(02) VALUE '60'. 
 *
  77 WS-TECLA            PIC  9(03) VALUE ZEROS.
     88 ESCAPE-KEY       VALUE 27.
@@ -149,6 +167,10 @@
  01 WS-CNPJ-BIT REDEFINES WS-CNPJ-INV
                         PIC 9(01) OCCURS 12.  
 *
+ 01 TAB-PALAVRA         PIC X(40).
+ 01 TAB-PALAVRA-BIT REDEFINES TAB-PALAVRA
+                        PIC X(01) OCCURS 40. 
+*
  01 WS-CNPJ-FULL        PIC 9(14).
  01 FILLER REDEFINES WS-CNPJ-FULL.
     05 WS-CNPJ-MAIN     PIC 9(12).
@@ -169,14 +191,17 @@
  77 CNT-VEN-WRT         PIC 9(04) VALUE ZEROS.
  77 CNT-VEN-REWRT       PIC 9(04) VALUE ZEROS.
  77 CNT-VEN-DEL         PIC 9(04) VALUE ZEROS.
+ 77 CNT-REL-VEN         PIC 9(04) VALUE ZEROS.
+ 77 CNT-REL-CLI         PIC 9(04) VALUE ZEROS.
  77 WS-RESULTADO        PIC 9(01) VALUE ZEROS.
  77 WS-RESTO            PIC 9(01) VALUE ZEROS.
  77 WS-DIG1             PIC 9(01) VALUE ZEROS.
  77 WS-DIG2             PIC 9(01) VALUE ZEROS.
  77 A                   PIC 9(03) VALUE ZEROS. 
  77 SEARCH-CPF          PIC 9(11) VALUE ZEROS.   
- 77 SEARCH-CNPJ         PIC 9(14) VALUE ZEROS.   
-
+ 77 SEARCH-CNPJ         PIC 9(14) VALUE ZEROS.
+ 77 WS-PAG1             PIC 9(02) VALUE ZEROS.   
+ 77 WS-CONT-LINHA       PIC 9(02) VALUE 70.
 *
  77 STATUS-CPF          PIC  X(01).
     88 CPF-OK           VALUE "0".
@@ -201,7 +226,28 @@
     88 TL-IMPORTACAO    VALUE "4".
     88 TL-VOLTAR        VALUE "V".
 *
+ 77 TL-OPT-ORD-CLI      PIC  X(01).
+    88 TL-OPT-ORD-CLIA  VALUE "A".
+    88 TL-OPT-ORD-CLID  VALUE "D".
+*
+ 77 TL-OPT-CLA-CLI      PIC  9(01).
+    88 TL-OPT-CLA-CLIOK VALUE 1 THRU 2.
+*
+ 77 TL-OPT-FIL-CLI      PIC  9(01).
+    88 TL-OPT-FIL-CLIOK VALUE 1 THRU 2.
+* 
+ 77 TL-OPT-ORD-VEN      PIC  X(01).
+    88 TL-OPT-ORD-VENA  VALUE "A".
+    88 TL-OPT-ORD-VEND  VALUE "D".
+*
+ 77 TL-OPT-CLA-VEN      PIC  9(01).
+    88 TL-OPT-CLA-VENOK VALUE 1 THRU 2.
+*
+ 77 TL-OPT-FIL-VEN      PIC  9(01).
+    88 TL-OPT-FIL-VENOK VALUE 1 THRU 2.
+*
  77 WS-CONTADOR         PIC 9(02) VALUE ZEROS.
+ 77 WS-CONTADOR-SUBSTR  PIC 9(02) VALUE ZEROS.
  77 TL-MSG-AVISO        PIC X(50) VALUE SPACES. 
  77 TL-CABEC-MENU       PIC X(21) VALUE SPACES.
  77 TL-CABEC-CLIENTE    PIC X(10) VALUE SPACES
@@ -219,7 +265,81 @@
  77 TL-LAT-VEN          PIC S9(03)V9(08) VALUE ZEROS.
  77 TL-LONG-VEN         PIC S9(03)V9(08) VALUE ZEROS.
  77 TL-IMP-NOME         PIC X(10) VALUE SPACES.
+ 77 TL-CABEC-RELCLI     PIC X(21) VALUE SPACES.
+ 77 TL-CABEC-RELVEN     PIC X(21) VALUE SPACES.
+ 77 TL-COD-CLI-REL      PIC 9(07) VALUE ZEROS.
+ 77 TL-RAZAO-SOC-REL    PIC X(40) VALUE SPACES.
+ 77 TL-COD-VEN-REL      PIC 9(03) VALUE ZEROS.
+ 77 TL-NOME-REL         PIC X(40) VALUE SPACES.
 *
+ 01 P-SEPARADOR         PIC X(133) VALUE  ALL '-'.
+*
+ 01 P-CABEC.
+    05                  PIC X(55).
+    05                  PIC X(21) VALUE
+                        "RELATORIO DE CLIENTES".
+    05                  PIC X(48).
+    05                  PIC X(05) VALUE "PAG. ". 
+    05 WS-PAG1          PIC ZZZ9.    
+*
+ 01 P-CABEC1.
+    05                  PIC X(02). 
+    05                  PIC X(17) VALUE "CODIGO DO CLIENTE".
+    05                  PIC X(05).
+    05                  PIC X(14) VALUE "     CNPJ     ".
+    05                  PIC X(05).
+    05                  PIC X(12) VALUE "RAZÃO SOCIAL".
+    05                  PIC X(28).  
+    05                  PIC X(05).
+    05                  PIC X(08) VALUE "LATITUDE".
+    05                  PIC X(03).
+    05                  PIC X(05).
+    05                  PIC X(09) VALUE "LONGITUDE".
+    05                  PIC X(02).
+    05                  PIC X(23).
+*
+ 01 P-DET1.
+    05                  PIC X(07). 
+    05 P-COD-CLI        PIC ZZZZZZ9.
+    05                  PIC X(10).
+    05 P-CNPJ           PIC ZZ.ZZZ.ZZ9/9999B99.
+    05                  PIC X(05).
+    05 P-RAZAO-SOC      PIC X(40).  
+    05                  PIC X(05).
+    05 P-LAT-CLI        PIC --9,99999999.
+    05                  PIC X(05).
+    05 P-LONG-CLI       PIC --9,99999999.
+    05                  PIC X(23).
+*
+ 01 P-CABEC2.
+    05                  PIC X(02). 
+    05                  PIC X(18) VALUE "CODIGO DO VENDEDOR".
+    05                  PIC X(05).
+    05                  PIC X(11) VALUE "    CPF    ".
+    05                  PIC X(05).
+    05                  PIC X(04) VALUE "NOME".
+    05                  PIC X(36).  
+    05                  PIC X(05).
+    05                  PIC X(08) VALUE "LATITUDE".
+    05                  PIC X(03).
+    05                  PIC X(05).
+    05                  PIC X(09) VALUE "LONGITUDE".
+    05                  PIC X(02).
+    05                  PIC X(23).
+*
+ 01 P-DET2.
+    05                  PIC X(09). 
+    05 P-COD-VEN        PIC ZZ9.
+    05                  PIC X(14).
+    05 P-CPF            PIC ZZZ.ZZZ.Z9B99.
+    05                  PIC X(04).
+    05 P-NOME           PIC X(40).  
+    05                  PIC X(05).
+    05 P-LAT-VEN        PIC --9,99999999.
+    05                  PIC X(05).
+    05 P-LONG-VEN       PIC --9,99999999.
+    05                  PIC X(23).
+*           
  SCREEN SECTION.
 *
  01 TELA-PRINC.
@@ -290,7 +410,39 @@
     05 TELA-IMP-ARG.
        10 LINE 10 COL 08 VALUE 'INFORME O NOME DO ARQUIVO.: '.
        10 LINE 10 COL PLUS 1 PIC X(10) USING TL-IMP-NOME.   
-*    
+*  
+01 TELA-RELAT-CLIENTE.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-RELCLI.
+    05 LINE 10 COL 08 VALUE 'ORDENAÇÃO (A/D): '.
+    05 LINE 10 COL PLUS 1 PIC X(01) USING TL-OPT-ORD-CLI.
+    05 LINE 12 COL 08 VALUE 'CLASSIFICAÇÃO..:'.
+    05 LINE 12 COL PLUS 1 PIC X(01) USING TL-OPT-CLA-CLI.
+    05 LINE 13 COL 08 VALUE '1 - CODIGO DO CLIENTE'.
+    05 LINE 14 COL 08 VALUE '2 - RAZÃO SOCIAL'.
+    05 LINE 16 COL 08 VALUE 'INFORME O FILTRO..:'.
+    05 LINE 16 COL PLUS 1 PIC X(01) USING TL-OPT-FIL-CLI.
+    05 LINE 17 COL 08 VALUE '1 - CODIGO DO CLIENTE'.
+    05 LINE 17 COL PLUS 1 PIC 9(07) USING TL-COD-CLI-REL.
+    05 LINE 18 COL 08 VALUE '2 - RAZÃO SOCIAL.....'.
+    05 LINE 18 COL PLUS 1 PIC X(40) USING TL-RAZAO-REL.
+    05 LINE 20 COL 08 VALUE 'ESC PARA VOLTAR'.
+*  
+01 TELA-RELAT-VENDEDOR.
+    05 LINE 01 COL 40 VALUE USING TL-CABEC-RELVEN.
+    05 LINE 10 COL 08 VALUE 'ORDENAÇÃO (A/D): '.
+    05 LINE 10 COL PLUS 1 PIC X(01) USING TL-OPT-ORD-REL.
+    05 LINE 12 COL 08 VALUE 'CLASSIFICAÇÃO..:'.
+    05 LINE 12 COL PLUS 1 PIC X(01) USING TL-OPT-CLA-REL.
+    05 LINE 13 COL 08 VALUE '1 - CODIGO DO VENDEDOR'.
+    05 LINE 14 COL 08 VALUE '2 - NOME DO VENDEDOR..'.
+    05 LINE 16 COL 08 VALUE 'INFORME O FILTRO..:'.
+    05 LINE 16 COL PLUS 1 PIC X(01) USING TL-OPT-FIL-REL.
+    05 LINE 17 COL 08 VALUE '1 - CODIGO DO VENDEDOR'.
+    05 LINE 17 COL PLUS 1 PIC 9(07) USING TL-COD-VEN-REL.
+    05 LINE 18 COL 08 VALUE '2 - NOME DO VENDEDOR..'.
+    05 LINE 18 COL PLUS 1 PIC X(40) USING TL-NOME-REL.
+    05 LINE 20 COL 08 VALUE 'ESC PARA VOLTAR'.
+* 
  PROCEDURE DIVISION.
 *
     PERFORM ABRE-ARQ-IO THRU ABRE-ARQ-IO-FIM.
@@ -301,16 +453,16 @@
 *
       DISPLAY TELA-PRINC.
       ACCEPT  TL-OPT-PRINC.
-* 
+*
       EVALUATE TRUE
 *
           WHEN TL-CADCLI  PERFORM MENU-CADASTRO     THRU MENU-CADASTRO-FIM
 *
           WHEN TL-CADVEN  PERFORM MENU-CADASTRO     THRU MENU-CADASTRO-FIM
 *
-          WHEN TL-RELCLI  PERFORM MENU-REL-CLIENTE  THRU MENU-REL-CLIENTE-FIM
+          WHEN TL-RELCLI  PERFORM MENU-RELATORIO    THRU MENU-RELATORIO-FIM
 *
-          WHEN TL-RELVEN  PERFORM MENU-REL-VENDEDOR THRU MENU-REL-VENDEDOR-FIM
+          WHEN TL-RELVEN  PERFORM MENU-RELATORIO    THRU MENU-RELATORIO-FIM
 *
           WHEN TL-EXEC    PERFORM MENU-EXEC-DIST    THRU MENU-EXEC-DIST-FIM
 *
@@ -352,7 +504,19 @@
 *
    OPEN INPUT ARQ-CLI-IMP,
               ARQ-VEN-IMP.
-
+*
+   IF NOT WS-RESULT-OK
+      DISPLAY 'ERRO AO ABRIR ARQUIVOS DE ENTRADA' 
+      STOP RUN
+   END-IF
+*
+   OPEN OUTPUT IMPRESSORA.
+*
+   IF NOT WS-RESULT-OK
+      DISPLAY 'ERRO AO ABRIR A IMPRESSORA'
+      STOP RUN
+   END-IF
+*
  ABRE-ARQ-IO-FIM.
 
 * -----------------------------
@@ -363,9 +527,419 @@
    CLOSE ARQ-CLIENTE,
          ARQ-VENDEDOR,
          ARQ-CLI-IMP,
-         ARQ-VEN-IMP.
+         ARQ-VEN-IMP,
+         IMPRESSORA.  
+*
+   IF NOT WS-RESULT-OK
+      DISPLAY 'ERRO AO FECHAR ARQUIVOS'
+      STOP RUN
+   END-IF
 *
  FECHA-ARQ-IO-FIM.       
+*
+* ---------------------------------------------------
+* ------ MENU RELATORIO DE CLIENTES/VENDEDORES ------
+* ---------------------------------------------------
+ MENU-RELATORIO.
+*
+   IF TL-RELCLI 
+      MOVE C-CABEC-RELCLI  TO TL-CABEC-RELCLI
+* 
+      PERFORM UNTIL WS-OPERACAO-FIM 
+*
+         DISPLAY TELA-RELAT-CLIENTE
+         ACCEPT TELA-RELAT-CLIENTE
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE      
+           IF TL-OPT-ORD-CLIA OR TL-OPT-ORD-CLID
+              IF TL-OPT-CLA-CLIOK
+                 IF TL-OPT-FIL-CLIOK
+
+                    EVALUATE TL-OPT-ORD-CLI ALSO TL-OPT-CLA-CLI ALSO TL-OPT-FIL-CLI
+*
+                        WHEN "A" ALSO 1 ALSO 1 PERFORM IMPRIME-RELCDCLI THRU IMPRIME-RELCDCLI-FIM
+*  
+                        WHEN "D" ALSO 1 ALSO 1 PERFORM IMPRIME-RELCDCLI THRU IMPRIME-RELCDCLI-FIM
+*
+                        WHEN "A" ALSO 2 ALSO 2 PERFORM IMPRIME-RELRAZAO THRU IMPRIME-RELRAZAO-FIM
+*
+                        WHEN "D" ALSO 2 ALSO 2 PERFORM IMPRIME-RELRAZAO THRU IMPRIME-RELRAZAO-FIM
+*
+                        WHEN OTHER             MOVE C-OPCAO-INV TO TL-MSG-AVISO
+                                               DISPLAY TELA-MSG-AVISO
+                    END-EVALUATE    
+                    MOVE '1' TO WS-OPERACAO  
+                 ELSE
+                    MOVE C-TP-FIL-INV TO TL-MSG-AVISO
+                    DISPLAY TELA-MSG-AVISO 
+                 END-IF  
+              ELSE
+                 MOVE C-TP-CLA-INV TO TL-MSG-AVISO
+                 DISPLAY TELA-MSG-AVISO 
+              END-IF
+           ELSE
+              MOVE C-TP-ORD-INV TO TL-MSG-AVISO
+              DISPLAY TELA-MSG-AVISO 
+           END-IF.
+         END-IF.
+*
+      END-PERFORM.
+   ELSE
+      MOVE C-CABEC-RELVEN TO TL-CABEC-RELVEN AQUI
+*
+      PERFORM UNTIL WS-OPERACAO-FIM 
+*
+         DISPLAY TELA-RELAT-VENDEDOR
+         ACCEPT TELA-RELAT-VENDEDOR
+         ACCEPT WS-TECLA FROM ESCAPE KEY
+         IF ESCAPE-KEY 
+            MOVE '1' TO WS-OPERACAO
+         ELSE      
+           IF TL-OPT-ORD-VENA OR TL-OPT-ORD-VEND
+              IF TL-OPT-CLA-VENOK
+                 IF TL-OPT-FIL-VENOK
+
+                    EVALUATE TL-OPT-ORD-VEN ALSO TL-OPT-CLA-VEN ALSO TL-OPT-FIL-VEN
+*
+                        WHEN "A" ALSO 1 ALSO 1 PERFORM IMPRIME-RELCDVEN THRU IMPRIME-RELCDVEN-FIM
+*  
+                        WHEN "D" ALSO 1 ALSO 1 PERFORM IMPRIME-RELCDVEN THRU IMPRIME-RELCDVEN-FIM
+*
+                        WHEN "A" ALSO 2 ALSO 2 PERFORM IMPRIME-RELNOME THRU IMPRIME-RELNOME-FIM
+*
+                        WHEN "D" ALSO 2 ALSO 2 PERFORM IMPRIME-RELNOME THRU IMPRIME-RELNOME-FIM
+*
+                        WHEN OTHER             MOVE C-OPCAO-INV TO TL-MSG-AVISO
+                                               DISPLAY TELA-MSG-AVISO
+                    END-EVALUATE    
+                    MOVE '1' TO WS-OPERACAO  
+                 ELSE
+                    MOVE C-TP-FIL-INV TO TL-MSG-AVISO
+                    DISPLAY TELA-MSG-AVISO 
+                 END-IF  
+              ELSE
+                 MOVE C-TP-CLA-INV TO TL-MSG-AVISO
+                 DISPLAY TELA-MSG-AVISO 
+              END-IF
+           ELSE
+              MOVE C-TP-ORD-INV TO TL-MSG-AVISO
+              DISPLAY TELA-MSG-AVISO 
+           END-IF.
+         END-IF.
+*
+      END-PERFORM.
+
+   END-IF.
+*
+ MENU-RELATORIO-FIM.
+*
+* -------------------------------------
+* ------ RELATORIO DE VENDEDORES ------
+*                                     -
+*         CODIGO DO VENDEDOR          -
+* -------------------------------------
+ IMPRIME-RELCDVEN.
+*
+    MOVE 70 TO WS-CONT-LINHA.
+    MOVE  0 TO CNT-REL-VEN.
+*
+    IF TL-COD-VEN-REL EQUAL SPACES
+       IF TL-OPT-ORD-VENA
+          MOVE LOW-VALUES  TO VEND-COD
+          START ARQ-VENDEDOR KEY IS GREATER VEND-COD
+       ELSE
+          MOVE HIGH-VALUES TO VEND-COD
+          START ARQ-VENDEDOR KEY IS LESS VEND-COD
+       END-IF.
+    ELSE
+       MOVE TL-COD-VEN-REL TO VEND-COD
+       START ARQ-VENDEDOR KEY IS = VEND-COD 
+    END-IF 
+*      
+   IF NOT WS-RESULT-OK
+      DISPLAY "ERRO START - LOCALIZAÇÃO DE REGISTRO NO ARQUIVO DE VENDAS"
+      DISPLAY "CODIGO DE ERRO : " WS-RESULTADO-ACESSO
+      STOP RUN
+   END-IF
+*
+    PERFORM UNTIL 1 <> 1    
+*
+       IF TL-OPT-ORD-VENA  COD
+          READ ARQ-VENDEDOR NEXT
+               AT END
+                  EXIT PERFORM
+          END-READ
+       ELSE
+          READ ARQ-VENDEDOR PREVIOUS
+               AT END
+                  EXIT PERFORM
+          END-READ 
+       END-IF
+*
+       IF TL-COD-VEN-REL NOT SPACES 
+          IF (VEND-COD NOT = TL-COD-VEN-REL)
+             EXIT PERFORM
+          END-IF.  
+       END-IF.
+* 
+       IF WS-CONT-LINHA > C-LINHA-MAX 
+          MOVE 0 TO WS-CONT-LINHA
+          ADD  1 TO WS-PAG1
+*
+          WRITE REG-IMPRESSORA FROM P-CABEC     AFTER 1
+          WRITE REG-IMPRESSORA FROM P-CABEC2    AFTER 1
+          WRITE REG-IMPRESSORA FROM P-SEPARADOR AFTER 1
+*
+          ADD 3 TO WS-CONT-LINHA
+       END-IF.
+*
+       MOVE VEND-COD       TO  P-COD-VEN.
+       MOVE VEND-CPF       TO  P-CPF.
+       MOVE VEND-NOME      TO  P-NOME.
+       MOVE VEND-LAT       TO  P-LAT-VEN.
+       MOVE VEND-LONG      TO  P-LONG-VEN.
+*
+       WRITE REG-IMPRESSORA FROM P-DET2 AFTER 1.
+*
+       ADD 1 TO WS-CONT-LINHA.
+       ADD 1 TO CNT-REL-VEN             
+*
+    END-PERFORM.     
+
+ IMPRIME-RELCDVEN-FIM. 
+*
+* -------------------------------------
+* ------ RELATORIO DE VENDEDORES ------
+*                                     -
+*           NOME DE VENDEDORES        -
+* -------------------------------------
+ IMPRIME-RELNOME.
+*
+    MOVE 70 TO WS-CONT-LINHA.
+    MOVE  0 TO CNT-REL-VEN.
+*
+    IF TL-NOME-REL EQUAL SPACES
+       IF TL-OPT-ORD-VENA
+          MOVE LOW-VALUES  TO VEND-NOME
+          START ARQ-VENDEDOR KEY IS GREATER VEND-NOME
+       ELSE
+          MOVE HIGH-VALUES TO VEND-NOME
+          START ARQ-VENDEDOR KEY IS LESS VEND-NOME
+       END-IF.
+    ELSE
+       MOVE TL-NOME-REL   TO TAB-PALAVRA 
+       PERFORM IDENTIFICA-SUBSTR THRU IDENTIFICA-SUBSTR-FIM.
+*
+       MOVE TL-NOME-REL (1:WS-CONTADOR-SUBSTR) TO VEND-NOME
+       START ARQ-VENDEDOR KEY IS >= VEND-NOME 
+    END-IF 
+*      
+    IF NOT WS-RESULT-OK
+      DISPLAY "ERRO START - LOCALIZAÇÃO DE REGISTRO NO ARQUIVO DE VENDAS"
+      DISPLAY "CODIGO DE ERRO : " WS-RESULTADO-ACESSO
+      STOP RUN
+    END-IF
+*
+    PERFORM UNTIL 1 <> 1    
+*
+       IF TL-OPT-ORD-VENA  
+          READ ARQ-VENDEDOR NEXT
+               AT END
+                  EXIT PERFORM
+          END-READ
+       ELSE
+          READ ARQ-VENDEDOR PREVIOUS
+               AT END
+                  EXIT PERFORM
+          END-READ 
+       END-IF
+*
+       IF TL-NOME-REL NOT SPACES 
+          IF (VEND-NOME (1:WS-CONTADOR-SUBSTR) NOT = TL-NOME-REL (1:WS-CONTADOR-SUBSTR))
+             EXIT PERFORM
+          END-IF.  
+       END-IF.
+* 
+       IF WS-CONT-LINHA > C-LINHA-MAX 
+          MOVE 0 TO WS-CONT-LINHA
+          ADD  1 TO WS-PAG1
+*
+          WRITE REG-IMPRESSORA FROM P-CABEC     AFTER 1
+          WRITE REG-IMPRESSORA FROM P-CABEC1    AFTER 1
+          WRITE REG-IMPRESSORA FROM P-SEPARADOR AFTER 1
+*
+          ADD 3 TO WS-CONT-LINHA
+       END-IF.
+*
+       MOVE VEND-COD       TO  P-COD-VEN.
+       MOVE VEND-CPF       TO  P-CPF.
+       MOVE VEND-NOME      TO  P-NOME.
+       MOVE VEND-LAT       TO  P-LAT-VEN.
+       MOVE VEND-LONG      TO  P-LONG-VEN.
+*
+      WRITE REG-IMPRESSORA FROM P-DET1 AFTER 1.
+*
+      ADD 1 TO WS-CONT-LINHA.
+      ADD 1 TO CNT-REL-VEN
+*             
+    END-PERFORM.     
+*
+ IMPRIME-RELNOME-FIM.
+*
+* -----------------------------------
+* ------ RELATORIO DE CLIENTES ------
+*                                   -
+*         CODIGO DE CLIENTE         -
+* -----------------------------------
+ IMPRIME-RELCDCLI.
+*
+    MOVE 70 TO WS-CONT-LINHA.
+    MOVE  0 TO CNT-REL-CLI.
+*
+    IF TL-COD-CLI-REL EQUAL SPACES
+       IF TL-OPT-ORD-CLIA
+          MOVE LOW-VALUES  TO CLI-COD
+          START ARQ-CLIENTE KEY IS GREATER CLI-COD
+       ELSE
+          MOVE HIGH-VALUES TO CLI-COD
+          START ARQ-CLIENTE KEY IS LESS CLI-COD
+       END-IF.
+    ELSE
+       MOVE TL-COD-CLI-REL TO CLI-COD
+       START ARQ-CLIENTE KEY IS = CLI-COD 
+    END-IF 
+*
+    IF NOT WS-RESULT-OK
+      DISPLAY "ERRO START - LOCALIZAÇÃO DE REGISTRO NO ARQUIVO DE CLIENTES"
+      DISPLAY "CODIGO DE ERRO : " WS-RESULTADO-ACESSO
+      STOP RUN
+    END-IF      
+*
+    PERFORM UNTIL 1 <> 1    
+*
+       IF TL-OPT-ORD-CLIA  
+          READ ARQ-CLIENTE NEXT
+               AT END
+                  EXIT PERFORM
+          END-READ
+       ELSE
+          READ ARQ-CLIENTE PREVIOUS
+               AT END
+                  EXIT PERFORM
+          END-READ 
+       END-IF
+*
+       IF TL-COD-CLI-REL NOT SPACES
+          IF (CLI-COD NOT = TL-COD-CLI-REL)
+             EXIT PERFORM
+          END-IF.  
+       END-IF.
+* 
+       IF WS-CONT-LINHA > C-LINHA-MAX 
+          MOVE 0 TO WS-CONT-LINHA
+          ADD  1 TO WS-PAG1
+*
+          WRITE REG-IMPRESSORA FROM P-CABEC     AFTER 1
+          WRITE REG-IMPRESSORA FROM P-CABEC1    AFTER 1
+          WRITE REG-IMPRESSORA FROM P-SEPARADOR AFTER 1
+*
+          ADD 3 TO WS-CONT-LINHA
+       END-IF.
+*
+       MOVE CLI-COD       TO  P-COD-CLI.
+       MOVE CLI-CNPJ      TO  P-CNPJ.
+       MOVE CLI-RAZAO-SOC TO  P-RAZAO-SOC.
+       MOVE CLI-LAT       TO  P-LAT-CLI.
+       MOVE CLI-LONG      TO  P-LONG-CLI.
+*
+       WRITE REG-IMPRESSORA FROM P-DET1 AFTER 1.
+*
+       ADD 1 TO WS-CONT-LINHA
+       ADD 1 TO CNT-REL-CLI
+*.             
+    END-PERFORM.     
+*
+ IMPRIME-RELCDCLI-FIM.
+*
+* -----------------------------------
+* ------ RELATORIO DE CLIENTES ------
+*                                   -
+*             RAZÃO SOCIAL          -
+* -----------------------------------
+ IMPRIME-RELRAZAO.
+*
+    MOVE 70 TO WS-CONT-LINHA.
+    MOVE  0 TO CNT-REL-CLI.
+*
+    IF TL-RAZAO-REL EQUAL SPACES
+       IF TL-OPT-ORD-CLIA
+          MOVE LOW-VALUES  TO CLI-RAZAO-SOC
+          START ARQ-CLIENTE KEY IS GREATER CLI-RAZAO-SOC
+       ELSE
+          MOVE HIGH-VALUES TO CLI-RAZAO-SOC
+          START ARQ-CLIENTE KEY IS LESS CLI-RAZAO-SOC
+       END-IF.
+    ELSE
+       MOVE TL-RAZAO-REL   TO TAB-PALAVRA 
+       PERFORM IDENTIFICA-SUBSTR THRU IDENTIFICA-SUBSTR-FIM.
+*
+       MOVE TL-RAZAO-REL(1:WS-CONTADOR-SUBSTR) TO CLI-RAZAO-SOC
+       START ARQ-CLI KEY IS >= CLI-RAZAO-SOC 
+    END-IF 
+*
+    IF NOT WS-RESULT-OK
+      DISPLAY "ERRO START - LOCALIZAÇÃO DE REGISTRO NO ARQUIVO DE CLIENTES"
+      DISPLAY "CODIGO DE ERRO : " WS-RESULTADO-ACESSO
+      STOP RUN
+    END-IF    
+*        
+    PERFORM UNTIL 1 <> 1    
+*
+       IF TL-OPT-ORD-CLIA  
+          READ ARQ-CLIENTE NEXT
+               AT END
+                  EXIT PERFORM
+          END-READ
+       ELSE
+          READ ARQ-CLIENTE PREVIOUS
+               AT END
+                  EXIT PERFORM
+          END-READ 
+       END-IF
+*
+       IF TL-RAZAO-REL NOT SPACES 
+          IF (CLI-RAZAO-SOC (1:WS-CONTADOR-SUBSTR) NOT = TL-RAZAO-REL(1:WS-CONTADOR-SUBSTR))
+             EXIT PERFORM
+          END-IF.  
+       END-IF.
+* 
+       IF WS-CONT-LINHA > C-LINHA-MAX 
+          MOVE 0 TO WS-CONT-LINHA
+          ADD  1 TO WS-PAG1
+*
+          WRITE REG-IMPRESSORA FROM P-CABEC     AFTER 1
+          WRITE REG-IMPRESSORA FROM P-CABEC1    AFTER 1
+          WRITE REG-IMPRESSORA FROM P-SEPARADOR AFTER 1
+*
+          ADD 3 TO WS-CONT-LINHA
+       END-IF.
+*
+       MOVE CLI-COD       TO  P-COD-CLI.
+       MOVE CLI-CNPJ      TO  P-CNPJ.
+       MOVE CLI-RAZAO-SOC TO  P-RAZAO-SOC.
+       MOVE CLI-LAT       TO  P-LAT-CLI.
+       MOVE CLI-LONG      TO  P-LONG-CLI.
+*
+       WRITE REG-IMPRESSORA FROM P-DET1 AFTER 1.
+*
+       ADD 1 TO WS-CONT-LINHA.
+       ADD 1 TO CNT-REL-CLI             
+*
+    END-PERFORM.     
+*
+ IMPRIME-RELRAZAO-FIM.
 *
 * --------------------------------------------------
 * ------ MENU CADASTRO DE CLIENTES/VENDEDORES ------
@@ -375,7 +949,7 @@
     IF TL-CADCLI 
        MOVE C-CABEC-CLI  TO TL-CABEC-MENU
     ELSE
-       MOVE C-CABEC-VEND TO TL-CABEC-MENU
+       MOVE C-CABEC-VEND TO WS-CABEC-MENU
     END-IF. 
 *
     PERFORM UNTIL TL-VOLTAR
@@ -469,8 +1043,8 @@
                     MOVE IVEND-COD TO VEN-COD.	
                     READ ARQ-VENDEDOR
                     IF NOT WS-RESULT-OK 
-                       MOVE IVEND-CPF TO VEN-CPF
-                       READ ARQ-VENDEDOR KEY IS VEN-CPF
+                       MOVE IVEND-CPF TO VEND-CPF
+                       READ ARQ-VENDEDOR KEY IS VEND-CPF
                        IF NOT WS-RESULT-OK 
                            MOVE IVEND-NOME     TO VEND-NOME
                            MOVE IVEND-LAT      TO VEND-LAT
@@ -1019,6 +1593,10 @@
       DIVIDE A BY 11 GIVING WS-RESULTADO
                      REMAINDER WS-RESTO
 *
+      ON SIZE ERROR
+         DISPLAY "ERRO DIVISÃO - CPF - CALCULO DO DIGITO VERIFICADOR 1"
+         STOP RUN.
+*
       COMPUTE WS-DIG1 = 11 - WS-RESTO 
 *
 * SEGUNDO DIGITO VERIFICADOR
@@ -1036,6 +1614,10 @@
 *
       DIVIDE A BY 11 GIVING WS-RESULTADO
                      REMAINDER WS-RESTO
+*
+      ON SIZE ERROR
+         DISPLAY "ERRO DIVISÃO - CPF - CALCULO DO DIGITO VERIFICADOR 1"
+         STOP RUN.
 *
       COMPUTE WS-DIG2 = 11 - WS-RESTO 
 *
@@ -1100,6 +1682,10 @@
       DIVIDE A BY 11 GIVING WS-RESULTADO
                      REMAINDER WS-RESTO
 *
+      ON SIZE ERROR
+         DISPLAY "ERRO DIVISÃO - CNPJ - CALCULO DO DIGITO VERIFICADOR 1"
+         STOP RUN.
+*
       COMPUTE WS-DIG1 = 11 - WS-RESTO 
 *
 * SEGUNDO DIGITO VERIFICADOR
@@ -1121,6 +1707,10 @@
       DIVIDE A BY 11 GIVING WS-RESULTADO
                      REMAINDER WS-RESTO
 *
+      ON SIZE ERROR
+         DISPLAY "ERRO DIVISÃO - CNPJ - CALCULO DO DIGITO VERIFICADOR 2"
+         STOP RUN.
+*
       COMPUTE WS-DIG2 = 11 - WS-RESTO 
 *
       MOVE WS-DIG1 TO WS-DIG1-AUX
@@ -1133,4 +1723,23 @@
    END-IF
 *
  VALIDA-CNPJ-FIM
+*
+* ------------------------------------
+* ------ IDENTIFICA SUBSTRING   ------
+* ------------------------------------
+ IDENTIFICA-SUBSTR.
+*
+* CONTA QUANTOS ESPAÇOS EXISTEM ANTES DO ULTIMO CARACTER
+  
+   PERFORM VARYING WS-CONTADOR FROM 40 BY -1 UNTIL
+           WS-CONTADOR = 1
+
+      IF TAB-PALAVRA-BIT(WS-CONTADOR) NOT = SPACES
+         MOVE WS-CONTADOR TO WS-CONTADOR-SUBSTR
+         MOVE 1 TO WS-CONTADOR   
+      END-IF 
+
+   END-PERFORM
+
+ IDENTIFICA-SUBSTR-FIM.
 *
